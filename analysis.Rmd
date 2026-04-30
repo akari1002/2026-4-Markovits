@@ -1,0 +1,487 @@
+---
+title: "analysis"
+output: html_document
+date: "2026-04-08"
+---
+
+```{r}
+library(dplyr)
+library(stringr)
+library(lme4)
+library(lavaan)
+library(nnet)
+library(brms)
+library(ggplot2)
+library(tidyverse)
+library(lavaan)
+library(lavaanPlot)
+library(psych)
+row_data <- read.csv("analysis.csv", fileEncoding = "CP932")
+```
+
+# 分析対象外のデータの除外
+```{r}
+library(dplyr)
+
+# --- Step 1: IMCチェック ---
+mydata <- row_data %>%
+  filter(rowSums(across(starts_with("IMC"), ~ . == 1), na.rm = TRUE) == 0)
+message("Step 1 (IMC除外後) の行数: ", nrow(mydata))
+
+# --- Step 2: 質問回答の質 ---
+mydata <- mydata %>%
+  filter(similar_question != 1, # 類似した調査に参加したか？という質問に「はい」と答えたデータを除外
+         answer_seriously != 2) # 真剣に回答してくれたか？という質問に「いいえ」と答えたデータを除外
+message("Step 2 (質による除外後) の行数: ", nrow(mydata))
+
+# --- Step 3: 数値変換とNA ---
+mydata <- mydata %>%
+  mutate(Duration = as.numeric(Duration.inseconds.)) %>%
+  filter(!is.na(Duration))
+message("Step 3 (Duration数値化後) の行数: ", nrow(mydata))
+
+# --- Step 4: 外れ値除外 ---
+mydata <- mydata %>%
+  filter(
+    Duration >= (mean(Duration, na.rm = TRUE) - 2 * sd(Duration, na.rm = TRUE)),
+    Duration <= (mean(Duration, na.rm = TRUE) + 2 * sd(Duration, na.rm = TRUE))
+  )
+message("Step 4 (最終結果) の行数: ", nrow(mydata))
+```
+# 年齢・性別
+```{r}
+#年齢
+min(mydata$Age)
+max(mydata$Age)
+mean(mydata$Age)
+sd(mydata$Age)
+
+mydata$Age
+#性別
+sum(mydata$Gender == "1", na.rm = TRUE) # 男性
+sum(mydata$Gender == "2", na.rm = TRUE)
+sum(mydata$Gender == "3", na.rm = TRUE)
+```
+
+# 課題のメモ
+
+- 戦略測定課題 戦略_1\~13
+  - 反例なし 戦略_1, 戦略_4, 戦略_7
+  - 90% 戦略_2, 戦略_5, 戦略_8, 戦略_10, 戦略_12
+  - 50% 戦略_3, 戦略_6, 戦略_9, 戦略_11, 戦略_13
+- 陰謀論信念GCBS
+  - GCBS_1 \~ 15
+- 疑似科学信念PBS
+  - PBS_1 \~ 19
+- CRT
+  - 問題自体 CRT_1 \~ 8
+  - 初見かの確認 初見か_1 \~ 8
+- 科学的推論SRS
+  - SRS_1 \~ 12
+- 二分法的思考尺度 
+  - DTI_1 \~ 15
+- 開放的思考尺度
+  - AOT AOT_1\~ 7
+
+```{r}
+strategy_Q_R90 <- c("戦略_2", "戦略_5", "戦略_8", "戦略_10", "戦略_12")
+strategy_Q_R50 <- c("戦略_3", "戦略_6", "戦略_9", "戦略_11", "戦略_13")
+strategy_Q_R100 <- c("戦略_1", "戦略_4", "戦略_7")
+GCBS_Q <- paste0("GCBS_", 1:15)
+PBS_Q <- paste0("PBS_", 1:19)
+CRT_Q <- paste0("CRT_", 1:8)
+CRT_seen <- paste0("初見か_", 1:8)
+SRS_Q <- paste0("SRS_", 1:12)
+DTI_Q <- paste0("DTI_", 1:15)
+DTI_Q_preference <- paste0("DTI_", c(1,4,7,10,13))
+DTI_Q_belief <- paste0("DTI_", c(2,5,8,11,14))
+DTI_Q_profit_and_loss <- paste0("DTI_", c(3,6,9,12,15))
+AOT_Q <-  paste0("AOT_", 1:7)
+```
+
+# 推論戦略ごとに分ける
+```{r}
+#それぞれの受容されなかった回数
+mydata <- mydata %>%
+  mutate(
+    R90 = rowSums(across(all_of(strategy_Q_R90)) == 2, na.rm = TRUE),
+    R50 = rowSums(across(all_of(strategy_Q_R50)) == 2, na.rm = TRUE),
+    R100 = rowSums(across(all_of(strategy_Q_R100)) == 2, na.rm = TRUE),
+    R50_R90 = R50 - R90
+  )
+
+# 反例：CEX
+# 統計：SS
+# 反例と統計の中間：Inter
+# その他：Other
+mydata <- mydata %>%
+  mutate(
+    strategy_type = case_when(
+      R50 > R90 + 1       ~ "SS",
+      R90 + R50 == 10     ~ "CEX",
+      R90 == 4            ~ "Inter",
+      TRUE                ~ "Other"
+    )
+  )
+mydata %>% count(strategy_type)
+
+```
+# 陰謀論信念・疑似科学信念
+```{r}
+mydata <- mydata %>%
+  mutate(
+    GCBS_total_score = rowSums(select(., all_of(GCBS_Q))),
+    
+    # 7問目を逆転処理（5件法：1〜5点）
+    PBS_7_rev = (5 + 1) - PBS_7,
+    
+    # 合計点の算出
+    # PBS_7の代わりに逆転処理済みの PBS_7_rev を含める
+    PBS_total_score = rowSums(across(c(all_of(setdiff(PBS_Q, "PBS_7")), "PBS_7_rev")), na.rm = TRUE)
+    )
+```
+
+# CRT
+```{r}
+#得点
+crt_data <- mydata %>%
+  mutate(
+    # 正誤判定を行い得点を計算
+    crtscore_1 = ifelse(`CRT_1` == "15", 1, 0),
+    crtscore_2 = ifelse(`CRT_2` == "72", 1, 0),
+    crtscore_3 = ifelse(`CRT_3` == "11", 1, 0),
+    crtscore_4 = ifelse(`CRT_4` == "125", 1, 0),
+    crtscore_5 = ifelse(`CRT_5` == "29", 1, 0),
+    crtscore_6 = ifelse(`CRT_6` == "30", 1, 0),
+    crtscore_7 = ifelse(`CRT_7` == "4", 1, 0),
+    crtscore_8 = ifelse(`CRT_8` == "15", 1, 0),
+  )
+
+crt_data <- crt_data %>%
+  rowwise() %>%
+  mutate(
+    # 1. 初見の問題数（分母）をカウント (初見フラグが 2 のもの)
+    CRT_attempted_count = sum(c_across(paste0("初見か_", 1:8)) == 2, na.rm = TRUE),
+    
+    # 2. 初見かつ正解した数（分子）をカウント
+    CRT_correct_count = sum(map_dbl(1:8, function(i) {
+      ans_val  <- get(paste0("crtscore_", i))
+      seen_val <- get(paste0("初見か_", i))
+      if (!is.na(ans_val) && !is.na(seen_val) && seen_val == 2 && ans_val == 1) 1 else 0
+    })),
+    
+    # 3. 正答率を算出（0除算を防ぐため分母が0より大きい場合のみ計算）
+    CRT_accuracy_rate = ifelse(CRT_attempted_count > 0, 
+                               CRT_correct_count / CRT_attempted_count, 
+                               NA)
+  ) %>%
+  ungroup()
+
+summary(crt_data$CRT_accuracy_rate)
+
+mydata$CRT_accuracy_rate <- crt_data$CRT_accuracy_rate
+
+mean(crt_data$CRT_correct_count, na.rm = TRUE)
+```
+
+```{r}
+# 正解キーの作成（1, 2, 1, 2... の並び）
+srs_keys <- c(1, 2, 1, 2, 2, 2, 1, 2, 1, 2, 2, 2)
+
+srs_data <- mydata %>%
+  rowwise() %>%
+  mutate(
+    # SRS_1~12 の値と正解キーを比較して合計
+    SRS_total_score = sum(c_across(paste0("SRS_", 1:12)) == srs_keys, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+mydata$SRS_total_score <- srs_data$SRS_total_score
+```
+
+```{r}
+mydata <- mydata %>%
+  mutate(
+    DTI_total_score = rowSums(select(., all_of(DTI_Q))),
+    DTI_preference_score = rowSums(select(., all_of(DTI_Q_preference))),
+    DTI_belief_score = rowSums(select(., all_of(DTI_Q_belief))),
+    DTI_profit_and_loss_score = rowSums(select(., all_of(DTI_Q_profit_and_loss))),
+    AOT_score = rowSums(select(., all_of(AOT_Q)))
+    )
+```
+
+
+```{r}
+analysis_data <- mydata %>%
+  select("ID", "R90", "R50", "R100", "R50_R90", "strategy_type", "GCBS_total_score", "PBS_total_score", "CRT_accuracy_rate", "SRS_total_score", "DTI_total_score", "DTI_preference_score", "DTI_belief_score", "DTI_profit_and_loss_score", "AOT_score")
+
+analysis_data$strategy_type <- as.factor(analysis_data$strategy_type)
+
+standardized_data <- analysis_data %>%
+  mutate(across(
+    # 「数値型」かつ「Idではない」列を選択
+    .cols = where(is.numeric) & !all_of("ID"), 
+    .fns = ~ as.numeric(scale(.))
+  ))
+```
+
+
+## 基本統計量
+
+```{r}
+summary(analysis_data)
+```
+
+## 戦略ごとの平均と標準偏差
+
+```{r}
+analysis_data %>%
+  group_by(strategy_type) %>%
+  summarise(
+    across(
+      c("GCBS_total_score", "PBS_total_score", "CRT_accuracy_rate", "SRS_total_score", "DTI_total_score", "DTI_preference_score", "DTI_belief_score", "DTI_profit_and_loss_score", "AOT_score"),
+      list(
+        mean = ~mean(.x, na.rm = TRUE),
+        sd   = ~sd(.x, na.rm = TRUE)
+      )
+    )
+  )
+```
+
+##　多変量分散分析
+
+```{r}
+manova_model <- manova(cbind(GCBS_total_score, PBS_total_score, CRT_accuracy_rate, SRS_total_score, DTI_preference_score, DTI_belief_score, DTI_profit_and_loss_score, AOT_score) ~ strategy_type, 
+                       data = standardized_data)
+summary(manova_model, test="Wilks")
+```
+```{r}
+# 変数ごとの有意性を確認
+summary.aov(manova_model)
+```
+
+
+## 多重共線性
+
+```{r}
+model_lm <- lm(
+  as.numeric(strategy_type) ~ GCBS_total_score + PBS_total_score + CRT_accuracy_rate + SRS_total_score + DTI_preference_score + DTI_belief_score + DTI_profit_and_loss_score +  AOT_score,
+  data = standardized_data
+)
+
+car::vif(model_lm)
+```
+
+##　多項ロジスティック回帰 
+### brm
+```{r}
+model <- brm(
+  strategy_type ~ GCBS_total_score + PBS_total_score + CRT_accuracy_rate + SRS_total_score +  DTI_preference_score + DTI_belief_score + DTI_profit_and_loss_score +  AOT_score,
+  data = standardized_data,
+  family = categorical(link = "logit"),
+  chains = 4,
+  cores = 4
+)
+
+summary(model)
+```
+
+### multinom関数を用いた多項ロジスティック回帰
+
+```{r}
+#DTIをまとめたモデル
+model_total <- multinom(strategy_type ~ GCBS_total_score + PBS_total_score + CRT_accuracy_rate + SRS_total_score + DTI_total_score +  AOT_score,
+                  data = standardized_data)
+
+#DTIを下位尺度で分けたモデル
+model_sub <- multinom(strategy_type ~ GCBS_total_score + PBS_total_score + CRT_accuracy_rate + SRS_total_score + DTI_preference_score + DTI_belief_score + DTI_profit_and_loss_score +  AOT_score,
+                  data = standardized_data)
+summary(model_total)
+summary(model_sub)
+```
+
+```{r}
+logLik(model_total)
+logLik(model_sub)
+```
+
+```{r}
+#P値の導出
+z <- summary(model_total)$coefficients/summary(model_total)$standard.errors
+p <- 2*(1 - pnorm(abs(z)))
+p
+```
+
+```{r}
+
+# 5. オッズ比の計算
+odds_ratios <- exp(coef(model_sub))
+odds_ratios
+
+# 6. z値とp値の計算
+z_values <- summary(model_sub)$coefficients / summary(model_sub)$standard.errors
+p_values <- 2 * (1 - pnorm(abs(z_values)))
+p_values
+
+# 7. 各カテゴリの予測確率
+pred_prob <- predict(model_sub, newdata = standardized_data, type = "probs")
+prob_df <- cbind(standardized_data, pred_prob)
+head(prob_df)
+
+# 8. 可視化用データ整形
+prob_long <- prob_df %>%
+  pivot_longer(
+    cols = c("SS", "CEX", "Inter", "Other"),  # pred_prob 内の列すべてを縦長に
+    names_to = "Predicted_Type",
+    values_to = "Probability"
+  )
+
+# 9. 予測確率の箱ひげ図
+ggplot(prob_long, aes(x = Predicted_Type, y = Probability, fill = strategy_type)) +
+  geom_boxplot() +
+  theme_minimal() +
+  ylab("Predicted Probability") +
+  xlab("Predicted Strategy Type") +
+  ggtitle("Predicted Probabilities by Actual Strategy Type")
+```
+```{r}
+cor_total <- analysis_data %>% select("R90", "R50_R90", "GCBS_total_score", "PBS_total_score", "CRT_accuracy_rate", "SRS_total_score", "DTI_total_score",  "AOT_score")
+cor <- lowerCor(cor_total)
+
+# install.packages("correlation")
+library(correlation)
+
+# 分析して星付きサマリーを表示
+cor_total %>% 
+  correlation() %>% 
+  summary(stars = TRUE, digits = 3)
+```
+
+# パス解析（ベースモデル）
+```{r}
+library(lavaan)
+library(semPlot)
+library(dplyr)
+
+model_strategy_mediation <- '
+  CRT_accuracy_rate ~~ AOT_score
+  GCBS_total_score ~~ PBS_total_score
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+  R50_R90 ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+  GCBS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score + SRS_total_score + R50_R90
+  PBS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score + SRS_total_score + R50_R90
+'
+
+# 適合
+fit_mediation <- sem(model_strategy_mediation, 
+                     data = standardized_data, 
+                     estimator = "MLR") # ダミー変数を含むのでMLRが安定します
+
+# 確認
+summary(fit_mediation, standardized = TRUE, fit.measures = TRUE)
+
+lavaanPlot(model = fit_mediation, 
+           coefs = TRUE, 
+           stand = TRUE, 
+           sig = .05, 
+           stars = "regress",
+           graph_options = list(rankdir = "LR"))
+```
+
+```{r}
+fitMeasures(fit_mediation, c("srmr", "cfi", "rmsea", "agfi", "ecvi"))
+```
+
+```{r}
+modificationindices(fit_mediation)
+```
+
+# パス解析（改良モデル）SRS→R50-R90の階層モデル
+```{r}
+library(lavaan)
+library(semPlot)
+library(dplyr)
+
+model_Layer <- '
+  CRT_accuracy_rate ~~ AOT_score
+  AOT_score ~~ DTI_total_score
+  CRT_accuracy_rate ~~ DTI_total_score
+
+  R50_R90 ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score + R50_R90
+
+  GCBS_total_score ~ SRS_total_score + DTI_total_score
+  PBS_total_score ~ SRS_total_score + DTI_total_score
+
+  GCBS_total_score ~~ PBS_total_score
+'
+
+# 適合
+fit_model_Layer <- sem(model_Layer, 
+                     data = standardized_data, 
+                     estimator = "MLR") # ダミー変数を含むのでMLRが安定します
+
+# 確認
+summary(fit_model_Layer, standardized = TRUE, fit.measures = TRUE)
+
+lavaanPlot(model = fit_model_Layer, 
+           coefs = TRUE, 
+           stand = TRUE, 
+           sig = .05, 
+           stars = "regress",
+           graph_options = list(rankdir = "LR"))
+
+summary(fit_model_Layer, standardized = TRUE, fit.measure = TRUE)
+```
+
+```{r}
+fitMeasures(fit_model_Layer, c("srmr", "cfi", "rmsea", "agfi", "ecvi"))
+```
+
+```{r}
+modificationindices(fit_model_Layer)
+```
+# パス解析（改良モデル）SRS・R50-R90の並列モデル
+```{r}
+library(lavaan)
+library(semPlot)
+library(dplyr)
+
+model_parallel <- '
+  CRT_accuracy_rate ~~ AOT_score
+  AOT_score ~~ DTI_total_score
+  CRT_accuracy_rate ~~ DTI_total_score
+  
+  R50_R90 ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+  
+  R50_R90 ~~ SRS_total_score
+  
+  GCBS_total_score ~ SRS_total_score + DTI_total_score + R50_R90
+  PBS_total_score ~ SRS_total_score + DTI_total_score + R50_R90
+  
+  GCBS_total_score ~~ PBS_total_score
+
+'
+
+# 適合
+fit_model_parallel <- sem(model_parallel, 
+                     data = standardized_data, 
+                     estimator = "MLR") # ダミー変数を含むのでMLRが安定します
+
+# 確認
+summary(fit_model_parallel, standardized = TRUE, fit.measures = TRUE)
+
+lavaanPlot(model = fit_model_parallel, 
+           coefs = TRUE, 
+           stand = TRUE, 
+           sig = .05, 
+           stars = "regress",
+           graph_options = list(rankdir = "LR"))
+
+summary(fit_model_parallel, standardized = TRUE, fit.measure = TRUE)
+```
+
+```{r}
+fitMeasures(fit_model_parallel, c("srmr", "cfi", "rmsea", "agfi", "ecvi"))
+```
