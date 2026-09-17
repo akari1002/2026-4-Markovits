@@ -47,6 +47,8 @@ mydata <- mydata %>%
     Duration <= (mean(Duration, na.rm = TRUE) + 2 * sd(Duration, na.rm = TRUE))
   )
 message("Step 4 (最終結果) の行数: ", nrow(mydata))
+
+mean(mydata$Duration.inseconds.) # 平均回答時間
 ```
 # 年齢・性別
 ```{r}
@@ -396,7 +398,7 @@ fitMeasures(fit_mediation, c("srmr", "cfi", "rmsea", "agfi", "ecvi"))
 modificationindices(fit_mediation)
 ```
 
-# パス解析（改良モデル）SRS→R50-R90の階層モデル
+# パス解析（改良モデル）R50-R90→SRS の階層モデル
 ```{r}
 library(lavaan)
 library(semPlot)
