@@ -73,6 +73,8 @@ sum(mydata$Gender == "3", na.rm = TRUE)
   - 50% 戦略_3, 戦略_6, 戦略_9, 戦略_11, 戦略_13
 - 陰謀論信念GCBS
   - GCBS_1 \~ 15
+    - GCBS_ETC (地球外生命体陰謀論) 項目3, 7, 8
+    - GCBS_GC (一般的陰謀論) 3, 7, 8以外
 - 疑似科学信念PBS
   - PBS_1 \~ 19
 - CRT
