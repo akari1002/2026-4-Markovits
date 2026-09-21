@@ -1,0 +1,661 @@
+---
+title: "analysis"
+output: html_document
+date: "2026-04-08"
+---
+
+```{r}
+library(dplyr)
+library(stringr)
+library(lme4)
+library(lavaan)
+library(nnet)
+library(brms)
+library(ggplot2)
+library(tidyverse)
+library(lavaan)
+library(lavaanPlot)
+library(psych)
+row_data <- read.csv("analysis.csv", fileEncoding = "CP932")
+```
+
+# 分析対象外のデータの除外
+```{r}
+library(dplyr)
+
+# --- Step 1: IMCチェック ---
+mydata <- row_data %>%
+  filter(rowSums(across(starts_with("IMC"), ~ . == 1), na.rm = TRUE) == 0)
+message("Step 1 (IMC除外後) の行数: ", nrow(mydata))
+
+# --- Step 2: 質問回答の質 ---
+mydata <- mydata %>%
+  filter(similar_question != 1, # 類似した調査に参加したか？という質問に「はい」と答えたデータを除外
+         answer_seriously != 2) # 真剣に回答してくれたか？という質問に「いいえ」と答えたデータを除外
+message("Step 2 (質による除外後) の行数: ", nrow(mydata))
+
+# --- Step 3: 数値変換とNA ---
+mydata <- mydata %>%
+  mutate(Duration = as.numeric(Duration.inseconds.)) %>%
+  filter(!is.na(Duration))
+message("Step 3 (Duration数値化後) の行数: ", nrow(mydata))
+
+# --- Step 4: 外れ値除外 ---
+mydata <- mydata %>%
+  filter(
+    Duration >= (mean(Duration, na.rm = TRUE) - 2 * sd(Duration, na.rm = TRUE)),
+    Duration <= (mean(Duration, na.rm = TRUE) + 2 * sd(Duration, na.rm = TRUE))
+  )
+message("Step 4 (最終結果) の行数: ", nrow(mydata))
+
+mean(mydata$Duration.inseconds.) # 平均回答時間
+```
+# 年齢・性別
+```{r}
+#年齢
+min(mydata$Age)
+max(mydata$Age)
+mean(mydata$Age)
+sd(mydata$Age)
+
+mydata$Age
+#性別
+sum(mydata$Gender == "1", na.rm = TRUE) # 男性
+sum(mydata$Gender == "2", na.rm = TRUE)
+sum(mydata$Gender == "3", na.rm = TRUE)
+```
+
+# 課題のメモ
+
+- 戦略測定課題 戦略_1\~13
+  - 反例なし 戦略_1, 戦略_4, 戦略_7
+  - 90% 戦略_2, 戦略_5, 戦略_8, 戦略_10, 戦略_12
+  - 50% 戦略_3, 戦略_6, 戦略_9, 戦略_11, 戦略_13
+- 陰謀論信念GCBS
+  - GCBS_1 \~ 15
+- 疑似科学信念PBS
+  - PBS_1 \~ 19
+- CRT
+  - 問題自体 CRT_1 \~ 8
+  - 初見かの確認 初見か_1 \~ 8
+- 科学的推論SRS
+  - SRS_1 \~ 12
+- 二分法的思考尺度 
+  - DTI_1 \~ 15
+- 開放的思考尺度
+  - AOT AOT_1\~ 7
+
+```{r}
+strategy_Q_R90 <- c("戦略_2", "戦略_5", "戦略_8", "戦略_10", "戦略_12")
+strategy_Q_R50 <- c("戦略_3", "戦略_6", "戦略_9", "戦略_11", "戦略_13")
+strategy_Q_R100 <- c("戦略_1", "戦略_4", "戦略_7")
+GCBS_Q <- paste0("GCBS_", 1:15)
+PBS_Q <- paste0("PBS_", 1:19)
+CRT_Q <- paste0("CRT_", 1:8)
+CRT_seen <- paste0("初見か_", 1:8)
+SRS_Q <- paste0("SRS_", 1:12)
+DTI_Q <- paste0("DTI_", 1:15)
+DTI_Q_preference <- paste0("DTI_", c(1,4,7,10,13))
+DTI_Q_belief <- paste0("DTI_", c(2,5,8,11,14))
+DTI_Q_profit_and_loss <- paste0("DTI_", c(3,6,9,12,15))
+AOT_Q <-  paste0("AOT_", 1:7)
+```
+
+# 推論戦略ごとに分ける
+```{r}
+#それぞれの受容されなかった回数
+mydata <- mydata %>%
+  mutate(
+    R90 = rowSums(across(all_of(strategy_Q_R90)) == 2, na.rm = TRUE),
+    R50 = rowSums(across(all_of(strategy_Q_R50)) == 2, na.rm = TRUE),
+    R100 = rowSums(across(all_of(strategy_Q_R100)) == 2, na.rm = TRUE),
+    R50_R90 = R50 - R90
+  )
+
+# 反例：CEX
+# 統計：SS
+# 反例と統計の中間：Inter
+# その他：Other
+mydata <- mydata %>%
+  mutate(
+    strategy_type = case_when(
+      R50 > R90 + 1       ~ "SS",
+      R90 + R50 == 10     ~ "CEX",
+      R90 == 4            ~ "Inter",
+      TRUE                ~ "Other"
+    )
+  )
+mydata %>% count(strategy_type)
+
+```
+# 陰謀論信念・疑似科学信念
+```{r}
+mydata <- mydata %>%
+  mutate(
+    GCBS_total_score = rowSums(select(., all_of(GCBS_Q))),
+    
+    # 7問目を逆転処理（5件法：1〜5点）
+    PBS_7_rev = (5 + 1) - PBS_7,
+    
+    # 合計点の算出
+    # PBS_7の代わりに逆転処理済みの PBS_7_rev を含める
+    PBS_total_score = rowSums(across(c(all_of(setdiff(PBS_Q, "PBS_7")), "PBS_7_rev")), na.rm = TRUE)
+    )
+```
+
+# CRT
+```{r}
+#得点
+crt_data <- mydata %>%
+  mutate(
+    # 正誤判定を行い得点を計算
+    crtscore_1 = ifelse(`CRT_1` == "15", 1, 0),
+    crtscore_2 = ifelse(`CRT_2` == "72", 1, 0),
+    crtscore_3 = ifelse(`CRT_3` == "11", 1, 0),
+    crtscore_4 = ifelse(`CRT_4` == "125", 1, 0),
+    crtscore_5 = ifelse(`CRT_5` == "29", 1, 0),
+    crtscore_6 = ifelse(`CRT_6` == "30", 1, 0),
+    crtscore_7 = ifelse(`CRT_7` == "4", 1, 0),
+    crtscore_8 = ifelse(`CRT_8` == "15", 1, 0),
+  )
+
+crt_data <- crt_data %>%
+  rowwise() %>%
+  mutate(
+    # 1. 初見の問題数（分母）をカウント (初見フラグが 2 のもの)
+    CRT_attempted_count = sum(c_across(paste0("初見か_", 1:8)) == 2, na.rm = TRUE),
+    
+    # 2. 初見かつ正解した数（分子）をカウント
+    CRT_correct_count = sum(map_dbl(1:8, function(i) {
+      ans_val  <- get(paste0("crtscore_", i))
+      seen_val <- get(paste0("初見か_", i))
+      if (!is.na(ans_val) && !is.na(seen_val) && seen_val == 2 && ans_val == 1) 1 else 0
+    })),
+    
+    # 3. 正答率を算出（0除算を防ぐため分母が0より大きい場合のみ計算）
+    CRT_accuracy_rate = ifelse(CRT_attempted_count > 0, 
+                               CRT_correct_count / CRT_attempted_count, 
+                               NA)
+  ) %>%
+  ungroup()
+
+summary(crt_data$CRT_accuracy_rate)
+
+mydata$CRT_accuracy_rate <- crt_data$CRT_accuracy_rate
+
+mean(crt_data$CRT_correct_count, na.rm = TRUE)
+```
+
+# SRS
+```{r}
+# 正解キーの作成（1, 2, 1, 2... の並び）
+srs_keys <- c(1, 2, 1, 2, 2, 2, 1, 2, 1, 2, 2, 2)
+
+srs_data <- mydata %>%
+  rowwise() %>%
+  mutate(
+    # SRS_1~12 の値と正解キーを比較して合計
+    SRS_total_score = sum(c_across(paste0("SRS_", 1:12)) == srs_keys, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+mydata$SRS_total_score <- srs_data$SRS_total_score
+```
+
+# DTI
+```{r}
+mydata <- mydata %>%
+  mutate(
+    DTI_total_score = rowSums(select(., all_of(DTI_Q))),
+    DTI_preference_score = rowSums(select(., all_of(DTI_Q_preference))),
+    DTI_belief_score = rowSums(select(., all_of(DTI_Q_belief))),
+    DTI_profit_and_loss_score = rowSums(select(., all_of(DTI_Q_profit_and_loss))),
+    AOT_score = rowSums(select(., all_of(AOT_Q)))
+    )
+```
+
+# 各データを analysis_data に追加
+```{r}
+analysis_data <- mydata %>%
+  select("ID", "R90", "R50", "R100", "R50_R90", "strategy_type", "GCBS_total_score", "PBS_total_score", "CRT_accuracy_rate", "SRS_total_score", "DTI_total_score", "DTI_preference_score", "DTI_belief_score", "DTI_profit_and_loss_score", "AOT_score")
+
+analysis_data$strategy_type <- as.factor(analysis_data$strategy_type)
+
+standardized_data <- analysis_data %>%
+  mutate(across(
+    # 「数値型」かつ「Idではない」列を選択
+    .cols = where(is.numeric) & !all_of("ID") & !all_of("strategy_type"), 
+    .fns = ~ as.numeric(scale(.))
+  ))
+```
+
+# 各推論型の人数と割合を表示
+```{r}
+mydata %>%
+  count(strategy_type) %>%
+  mutate(prop = n / sum(n))
+```
+# 各推論型各尺度の平均と標準偏差を算出
+```{r}
+library(dplyr)
+
+mydata %>%
+  group_by(strategy_type) %>%
+  summarise(
+    N = n(),
+    CRT_M = mean(CRT_accuracy_rate, na.rm = TRUE),
+    CRT_SD = sd(CRT_accuracy_rate, na.rm = TRUE),
+    AOT_M = mean(AOT_score, na.rm = TRUE),
+    AOT_SD = sd(AOT_score, na.rm = TRUE),
+    DTI_M = mean(DTI_total_score, na.rm = TRUE),
+    DTI_SD = sd(DTI_total_score, na.rm = TRUE),
+    SRS_M = mean(SRS_total_score, na.rm = TRUE),
+    SRS_SD = sd(SRS_total_score, na.rm = TRUE),
+    GCBS_M = mean(GCBS_total_score, na.rm = TRUE),
+    GCBS_SD = sd(GCBS_total_score, na.rm = TRUE),
+    PBS_M = mean(PBS_total_score, na.rm = TRUE),
+    PBS_SD = sd(PBS_total_score, na.rm = TRUE)
+  )
+```
+
+# 推論戦略課題を抜きにした全体のパス解析 
+# 認知特性→ SRS →陰謀論・疑似科学
+```{r}
+library(lavaan)
+library(semPlot)
+library(dplyr)
+
+model_Layer <- '
+  CRT_accuracy_rate ~~ AOT_score
+  AOT_score ~~ DTI_total_score
+  CRT_accuracy_rate ~~ DTI_total_score
+
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+
+  GCBS_total_score ~ SRS_total_score + DTI_total_score
+  PBS_total_score ~ SRS_total_score + DTI_total_score
+
+  GCBS_total_score ~~ PBS_total_score
+'
+
+# 適合
+fit_model_Layer <- sem(model_Layer, 
+                     data = standardized_data, 
+                     estimator = "MLR") # ダミー変数を含むのでMLRが安定します
+
+# 確認
+summary(fit_model_Layer, standardized = TRUE, fit.measures = TRUE)
+
+lavaanPlot(model = fit_model_Layer, 
+           coefs = TRUE, 
+           stand = TRUE, 
+           sig = .05, 
+           stars = "regress",
+           graph_options = list(rankdir = "LR"))
+
+summary(fit_model_Layer, standardized = TRUE, fit.measure = TRUE)
+```
+
+# モデル適合度を導出
+```{r}
+fitMeasures(fit_model_Layer, c("srmr", "cfi", "rmsea", "agfi", "ecvi"))
+```
+
+```{r}
+modificationindices(fit_model_Layer)
+```
+
+# 各推論群におけるパス係数の推定
+```{r}
+library(lavaan)
+
+# 各推論群でパス係数を算出するモデル
+model_strategy_group <- '
+
+  # -------------------------
+  # 共変関係
+  # -------------------------
+  CRT_accuracy_rate ~~ AOT_score
+  AOT_score ~~ DTI_total_score
+  CRT_accuracy_rate ~~ DTI_total_score
+
+  # -------------------------
+  # SRSを予測
+  # -------------------------
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+
+  # -------------------------
+  # ESBを予測
+  # -------------------------
+  GCBS_total_score ~ SRS_total_score + DTI_total_score
+  PBS_total_score ~ SRS_total_score + DTI_total_score
+
+  # -------------------------
+  # GCBSとPBSの残差共分散
+  # -------------------------
+  GCBS_total_score ~~ PBS_total_score
+'
+
+# 推論戦略群ごとにSEMを推定
+fit_strategy_group <- sem(
+  model_strategy_group,
+  data = standardized_data,
+  group = "strategy_type",
+  estimator = "MLR"
+)
+
+# 結果を表示
+summary(
+  fit_strategy_group,
+  standardized = TRUE,
+  fit.measures = TRUE
+)
+```
+# 4つの推論戦略タイプ別に、SEMで推定された7本の回帰パスの係数・標準誤差・p値・標準化係数を取り出して表にする
+```{r}
+parameterEstimates(
+  fit_strategy_group,
+  standardized = TRUE
+) %>%
+  filter(
+    op == "~",
+    lhs %in% c(
+      "SRS_total_score",
+      "GCBS_total_score",
+      "PBS_total_score"
+    )
+  ) %>%
+  mutate(
+    strategy_type = c("CEX", "SS", "Inter", "Other")[group]
+  ) %>%
+  select(
+    strategy_type,
+    lhs,
+    rhs,
+    est,
+    se,
+    pvalue,
+    std.all
+  )
+```
+
+# 各推論型のwald検定
+```{r}
+library(dplyr)
+library(lavaan)
+
+# ============================================================
+# 1. 推論戦略タイプの順番を固定
+# ============================================================
+
+standardized_data <- standardized_data %>%
+  mutate(
+    strategy_type = factor(
+      strategy_type,
+      levels = c("SS", "CEX", "Inter", "Other")
+    )
+  )
+
+table(standardized_data$strategy_type, useNA = "ifany")
+```
+
+```{r}
+# ============================================================
+# 2. 多母集団SEMのモデル
+# ============================================================
+model_strategy_group <- '
+
+  # ----------------------------------------------------------
+  # 外生変数間の共分散
+  # ----------------------------------------------------------
+
+  CRT_accuracy_rate ~~ AOT_score
+  AOT_score ~~ DTI_total_score
+  CRT_accuracy_rate ~~ DTI_total_score
+
+
+  # ----------------------------------------------------------
+  # SRSを予測
+  # ----------------------------------------------------------
+
+  SRS_total_score ~ CRT_accuracy_rate + AOT_score + DTI_total_score
+
+  # ----------------------------------------------------------
+  # GCBSを予測
+  # ----------------------------------------------------------
+
+  GCBS_total_score ~ SRS_total_score + DTI_total_score
+
+
+  # ----------------------------------------------------------
+  # PBSを予測
+  # ----------------------------------------------------------
+
+  PBS_total_score ~ SRS_total_score + DTI_total_score
+
+
+  # ----------------------------------------------------------
+  # GCBSとPBSの残差共分散
+  # ----------------------------------------------------------
+
+  GCBS_total_score ~~ PBS_total_score
+'
+```
+
+```{r}
+# ============================================================
+# 3. 4群の多母集団SEMを推定
+# ============================================================
+
+fit_strategy_group <- sem(
+  model_strategy_group,
+  data = standardized_data,
+  group = "strategy_type",
+  estimator = "MLR"
+)
+```
+```{r}
+# ============================================================
+# 4. 群の順番を確認
+# ============================================================
+
+lavInspect(
+  fit_strategy_group,
+  "group.label"
+)
+```
+
+```{r}
+# ============================================================
+# 5. 4群のモデル適合度
+# ============================================================
+
+summary(
+  fit_strategy_group,
+  standardized = TRUE,
+  fit.measures = TRUE
+)
+```
+
+```{r}
+# ============================================================
+# 6. 各群のパス係数を一覧表示
+# ============================================================
+
+path_results <- parameterEstimates(
+  fit_strategy_group,
+  standardized = TRUE
+) %>%
+  filter(
+    op == "~",
+    lhs %in% c(
+      "SRS_total_score",
+      "GCBS_total_score",
+      "PBS_total_score"
+    )
+  ) %>%
+  mutate(
+    strategy_type = lavInspect(
+      fit_strategy_group,
+      "group.label"
+    )[group]
+  ) %>%
+  select(
+    strategy_type,
+    lhs,
+    rhs,
+    est,
+    se,
+    pvalue,
+    std.all
+  )
+
+path_results
+```
+
+```{r}
+# ============================================================
+# 7. 4群間で「回帰パスがすべて等しい」モデルを作成
+# ============================================================
+
+fit_strategy_equal <- sem(
+  model_strategy_group,
+  data = standardized_data,
+  group = "strategy_type",
+  group.equal = "regressions",
+  estimator = "MLR"
+)
+```
+
+```{r}
+# ============================================================
+# 8. 自由モデルと等値モデルを比較
+# ============================================================
+
+anova(
+  fit_strategy_group,
+  fit_strategy_equal
+)
+```
+
+```{r}
+# ============================================================
+# 9. AIC / BIC も確認
+# ============================================================
+
+fitMeasures(
+  fit_strategy_group,
+  c("aic", "bic", "cfi", "tli", "rmsea", "srmr")
+)
+
+fitMeasures(
+  fit_strategy_equal,
+  c("aic", "bic", "cfi", "tli", "rmsea", "srmr")
+)
+```
+
+```{r}
+# ============================================================
+# 10. CEX vs SS のみを抽出
+# ============================================================
+
+data_CEX_SS <- standardized_data %>%
+  filter(
+    strategy_type %in% c("SS", "CEX")
+  ) %>%
+  droplevels()
+
+
+# 群数・人数を確認
+table(data_CEX_SS$strategy_type)
+```
+
+```{r}
+# ============================================================
+# 11. CEX vs SS の自由モデル
+# ============================================================
+
+fit_CEX_SS_free <- sem(
+  model_strategy_group,
+  data = data_CEX_SS,
+  group = "strategy_type",
+  estimator = "MLR"
+)
+```
+
+```{r}
+# ============================================================
+# 12. CEX vs SS の回帰パス等値モデル
+# ============================================================
+
+fit_CEX_SS_equal <- sem(
+  model_strategy_group,
+  data = data_CEX_SS,
+  group = "strategy_type",
+  group.equal = "regressions",
+  estimator = "MLR"
+)
+```
+
+```{r}
+# ============================================================
+# 13. CEX vs SS のモデル比較
+# ============================================================
+
+anova(
+  fit_CEX_SS_free,
+  fit_CEX_SS_equal
+)
+```
+
+```{r}
+# ============================================================
+# 14. CEX vs SS の適合度
+# ============================================================
+
+fitMeasures(
+  fit_CEX_SS_free,
+  c("aic", "bic", "cfi", "tli", "rmsea", "srmr")
+)
+
+fitMeasures(
+  fit_CEX_SS_equal,
+  c("aic", "bic", "cfi", "tli", "rmsea", "srmr")
+)
+```
+
+```{r}
+# ============================================================
+# 15. CEX vs SS の各パス係数を確認
+# ============================================================
+
+path_results_CEX_SS <- parameterEstimates(
+  fit_CEX_SS_free,
+  standardized = TRUE
+) %>%
+  filter(
+    op == "~",
+    lhs %in% c(
+      "SRS_total_score",
+      "GCBS_total_score",
+      "PBS_total_score"
+    )
+  ) %>%
+  mutate(
+    strategy_type = lavInspect(
+      fit_CEX_SS_free,
+      "group.label"
+    )[group]
+  ) %>%
+  select(
+    strategy_type,
+    lhs,
+    rhs,
+    est,
+    se,
+    pvalue,
+    std.all
+  )
+
+path_results_CEX_SS
+```
