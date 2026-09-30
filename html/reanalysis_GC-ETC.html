@@ -10,9 +10,9 @@
 
 
 
-<meta name="date" content="2026-04-08" />
+<meta name="date" content="2026-09-17" />
 
-<title>analysis</title>
+<title>reanalysis_GC&amp;ETC</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1583,8 +1583,8 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">analysis</h1>
-<h4 class="date">2026-04-08</h4>
+<h1 class="title toc-ignore">reanalysis_GC&amp;ETC</h1>
+<h4 class="date">2026-09-17</h4>
 
 </div>
 
@@ -2117,8 +2117,8 @@ summary(fit_mediation, standardized = TRUE, fit.measures = TRUE)</code></pre>
            sig = .05, 
            stars = &quot;regress&quot;,
            graph_options = list(rankdir = &quot;LR&quot;))</code></pre>
-<div class="grViz html-widget html-fill-item" id="htmlwidget-2b2ca593a007aaee017e" style="width:672px;height:480px;"></div>
-<script type="application/json" data-for="htmlwidget-2b2ca593a007aaee017e">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; SRS_total_score; R50_R90; GCBS_GC_score; GCBS_ETC_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->SRS_total_score [label = \"0.45***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.24***\"] CRT_accuracy_rate->R50_R90 [label = \"-0.15*\"] AOT_score->R50_R90 [label = \"0.14*\"] DTI_total_score->R50_R90 [label = \"\"] CRT_accuracy_rate->GCBS_GC_score [label = \"\"] AOT_score->GCBS_GC_score [label = \"0.24***\"] DTI_total_score->GCBS_GC_score [label = \"\"] SRS_total_score->GCBS_GC_score [label = \"\"] R50_R90->GCBS_GC_score [label = \"\"] CRT_accuracy_rate->GCBS_ETC_score [label = \"\"] AOT_score->GCBS_ETC_score [label = \"0.21**\"] DTI_total_score->GCBS_ETC_score [label = \"\"] SRS_total_score->GCBS_ETC_score [label = \"-0.15*\"] R50_R90->GCBS_ETC_score [label = \"\"] CRT_accuracy_rate->PBS_total_score [label = \"\"] AOT_score->PBS_total_score [label = \"\"] DTI_total_score->PBS_total_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.24**\"] R50_R90->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<div class="grViz html-widget html-fill-item" id="htmlwidget-a8dd202da832e7d4af20" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-a8dd202da832e7d4af20">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; SRS_total_score; R50_R90; GCBS_GC_score; GCBS_ETC_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->SRS_total_score [label = \"0.45***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.24***\"] CRT_accuracy_rate->R50_R90 [label = \"-0.15*\"] AOT_score->R50_R90 [label = \"0.14*\"] DTI_total_score->R50_R90 [label = \"\"] CRT_accuracy_rate->GCBS_GC_score [label = \"\"] AOT_score->GCBS_GC_score [label = \"0.24***\"] DTI_total_score->GCBS_GC_score [label = \"\"] SRS_total_score->GCBS_GC_score [label = \"\"] R50_R90->GCBS_GC_score [label = \"\"] CRT_accuracy_rate->GCBS_ETC_score [label = \"\"] AOT_score->GCBS_ETC_score [label = \"0.21**\"] DTI_total_score->GCBS_ETC_score [label = \"\"] SRS_total_score->GCBS_ETC_score [label = \"-0.15*\"] R50_R90->GCBS_ETC_score [label = \"\"] CRT_accuracy_rate->PBS_total_score [label = \"\"] AOT_score->PBS_total_score [label = \"\"] DTI_total_score->PBS_total_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.24**\"] R50_R90->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
 <pre class="r"><code>fitMeasures(fit_mediation, c(&quot;srmr&quot;, &quot;cfi&quot;, &quot;rmsea&quot;, &quot;agfi&quot;, &quot;ecvi&quot;))</code></pre>
 <pre><code>##  srmr   cfi rmsea  agfi  ecvi 
 ## 0.072 0.920 0.224 0.484 0.467</code></pre>
@@ -2331,8 +2331,8 @@ summary(fit_model_Layer, standardized = TRUE, fit.measures = TRUE)</code></pre>
            sig = .05, 
            stars = &quot;regress&quot;,
            graph_options = list(rankdir = &quot;LR&quot;))</code></pre>
-<div class="grViz html-widget html-fill-item" id="htmlwidget-454255e05ae9c791118f" style="width:672px;height:480px;"></div>
-<script type="application/json" data-for="htmlwidget-454255e05ae9c791118f">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; R50_R90; SRS_total_score; GCBS_GC_score; GCBS_ETC_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->R50_R90 [label = \"-0.15*\"] AOT_score->R50_R90 [label = \"0.14*\"] DTI_total_score->R50_R90 [label = \"\"] CRT_accuracy_rate->SRS_total_score [label = \"0.42***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.25***\"] R50_R90->SRS_total_score [label = \"-0.21***\"] SRS_total_score->GCBS_GC_score [label = \"\"] DTI_total_score->GCBS_GC_score [label = \"0.18*\"] SRS_total_score->GCBS_ETC_score [label = \"-0.18*\"] DTI_total_score->GCBS_ETC_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.25***\"] DTI_total_score->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<div class="grViz html-widget html-fill-item" id="htmlwidget-d4f1ec0652752bcaf54a" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-d4f1ec0652752bcaf54a">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; R50_R90; SRS_total_score; GCBS_GC_score; GCBS_ETC_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->R50_R90 [label = \"-0.15*\"] AOT_score->R50_R90 [label = \"0.14*\"] DTI_total_score->R50_R90 [label = \"\"] CRT_accuracy_rate->SRS_total_score [label = \"0.42***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.25***\"] R50_R90->SRS_total_score [label = \"-0.21***\"] SRS_total_score->GCBS_GC_score [label = \"\"] DTI_total_score->GCBS_GC_score [label = \"0.18*\"] SRS_total_score->GCBS_ETC_score [label = \"-0.18*\"] DTI_total_score->GCBS_ETC_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.25***\"] DTI_total_score->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
 <pre class="r"><code>summary(fit_model_Layer, standardized = TRUE, fit.measure = TRUE)</code></pre>
 <pre><code>## lavaan 0.6-19 ended normally after 21 iterations
 ## 

@@ -10,9 +10,9 @@
 
 
 
-<meta name="date" content="2026-04-08" />
+<meta name="date" content="2026-09-21" />
 
-<title>analysis</title>
+<title>reanalysis_classification-Markovits</title>
 
 <script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
 // be compatible with the behavior of Pandoc < 2.8).
@@ -1583,8 +1583,8 @@ display: none;
 
 
 
-<h1 class="title toc-ignore">analysis</h1>
-<h4 class="date">2026-04-08</h4>
+<h1 class="title toc-ignore">reanalysis_classification-Markovits</h1>
+<h4 class="date">2026-09-21</h4>
 
 </div>
 
@@ -2065,8 +2065,8 @@ summary(fit_model_Layer, standardized = TRUE, fit.measures = TRUE)</code></pre>
            sig = .05, 
            stars = &quot;regress&quot;,
            graph_options = list(rankdir = &quot;LR&quot;))</code></pre>
-<div class="grViz html-widget html-fill-item" id="htmlwidget-7fbafa4be0bf60251c98" style="width:672px;height:480px;"></div>
-<script type="application/json" data-for="htmlwidget-7fbafa4be0bf60251c98">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; SRS_total_score; GCBS_total_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->SRS_total_score [label = \"0.45***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.24***\"] SRS_total_score->GCBS_total_score [label = \"-0.14*\"] DTI_total_score->GCBS_total_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.25***\"] DTI_total_score->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
+<div class="grViz html-widget html-fill-item" id="htmlwidget-3d77bb32525528f6b647" style="width:672px;height:480px;"></div>
+<script type="application/json" data-for="htmlwidget-3d77bb32525528f6b647">{"x":{"diagram":" digraph plot { \n graph [ rankdir = LR ] \n node [ shape = box ] \n node [shape = box] \n CRT_accuracy_rate; AOT_score; DTI_total_score; SRS_total_score; GCBS_total_score; PBS_total_score \n node [shape = oval] \n  \n \n edge [ color = black ] \n CRT_accuracy_rate->SRS_total_score [label = \"0.45***\"] AOT_score->SRS_total_score [label = \"\"] DTI_total_score->SRS_total_score [label = \"-0.24***\"] SRS_total_score->GCBS_total_score [label = \"-0.14*\"] DTI_total_score->GCBS_total_score [label = \"\"] SRS_total_score->PBS_total_score [label = \"-0.25***\"] DTI_total_score->PBS_total_score [label = \"\"]  \n}","config":{"engine":"dot","options":null}},"evals":[],"jsHooks":[]}</script>
 <pre class="r"><code>summary(fit_model_Layer, standardized = TRUE, fit.measure = TRUE)</code></pre>
 <pre><code>## lavaan 0.6-19 ended normally after 19 iterations
 ## 
